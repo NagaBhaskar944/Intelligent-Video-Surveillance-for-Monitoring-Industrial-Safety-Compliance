@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+{% load static %}
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PPE Detection Dashboard</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial;
+            background: #0f172a;
+            color: white;
+        }
+
+        .main {
+            display: grid;
+            grid-template-columns: 250px 1fr 250px;
+            height: 100vh;
+        }
+
+        /* LEFT PANEL */
+        .sidebar {
+            background: #111827;
+            padding: 20px;
+        }
+
+        .sidebar h1 {
+            font-size: 22px;
+            margin-bottom: 20px;
+        }
+
+        .sidebar button {
+            width: 100%;
+            padding: 10px;
+            margin-top: 10px;
+            background: #2563eb;
+            border: none;
+            color: white;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .sidebar select {
+            width: 100%;
+            margin-top: 10px;
+            padding: 8px;
+        }
+
+        /* CENTER */
+        .video-container {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: #020617;
+        }
+
+        #video-frame {
+            width: 720px;
+            height: 520px;
+            border-radius: 10px;
+            border: 3px solid #2563eb;
+            background: black;
+        }
+
+        .graph-box {
+            width: 720px;
+            margin-top: 20px;
+            background: #111827;
+            padding: 10px;
+            border-radius: 10px;
+        }
+
+        /* RIGHT PANEL */
+        .right-panel {
+            background: #111827;
+            padding: 20px;
+        }
+
+        .class-box {
+            background: #1f2937;
+            padding: 8px;
+            margin-bottom: 8px;
+            border-radius: 6px;
+        }
+
+        .logs-link {
+            display: block;
+            margin-top: 20px;
+            color: #38bdf8;
+            text-decoration: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="main">
+
+        <!-- LEFT -->
+        <div class="sidebar">
+            <h1>PPE Detection</h1>
+
+            <label>Confidence Threshold</label>
+            <input type="range" id="confidence-slider" min="0.1" max="1.0" value="0.5" step="0.1">
+            <span id="confidence-value">0.5</span>
+
+            <button id="start-button">Start Streaming</button>
+            <button id="stop-button">Stop Streaming</button>
+
+            <select id="class-id-select" multiple>
+                <option value="1">No Vest</option>
+                <option value="3">Safety Vest</option>
+                <option value="2">No Helmet</option>
+                <option value="4">Helmet</option>
+            </select>
+
+            <button id="set-class-button">Set Classes</button>
+
+            <div id="detected-classes" style="margin-top:10px;color:#38bdf8;"></div>
+
+        </div>
+
+        <!-- CENTER -->
+        <div class="video-container">
+
+            <img id="video-frame" src="" alt="Video Stream">
+
+            <div class="graph-box">
+                <canvas id="detectionChart"></canvas>
+            </div>
+
+        </div>
+
+        <!-- RIGHT -->
+        <div class="right-panel">
+
+            <h2>Detection Classes</h2>
+
+            <div class="class-box">Helmet</div>
+            <div class="class-box">No Helmet</div>
+            <div class="class-box">Safety Vest</div>
+            <div class="class-box">No Vest</div>
+
+            <a href="{% url 'detection_list' %}" class="logs-link" target="_blank">View Logs</a>
+
+        </div>
+
+    </div>
+
+    <script>
+
+        /* CAMERA STREAM */
+
+        const startBtn = document.getElementById("start-button");
+        const stopBtn = document.getElementById("stop-button");
+        const videoFrame = document.getElementById("video-frame");
+
+        startBtn.onclick = function () {
+
+            /* add timestamp to avoid caching */
+            videoFrame.src = "{% url 'video_feed' %}?t=" + new Date().getTime();
+
+        }
+
+        stopBtn.onclick = function () {
+
+            videoFrame.src = "";
+
+        }
+
+        /* CONFIDENCE SLIDER */
+
+        const slider = document.getElementById("confidence-slider");
+        const value = document.getElementById("confidence-value");
+
+        slider.oninput = function () {
+            value.innerText = this.value;
+        }
+
+        /* CLASS SELECTION */
+
+        const setClassBtn = document.getElementById("set-class-button");
+        const classSelect = document.getElementById("class-id-select");
+        const detectedClassesDiv = document.getElementById("detected-classes");
+
+        setClassBtn.onclick = function () {
+
+            const selected = Array.from(classSelect.selectedOptions).map(opt => opt.text);
+
+            detectedClassesDiv.innerText = selected.length ? selected.join(", ") : "None selected";
+
+        }
+
+        /* GRAPH */
+
+        const ctx = document.getElementById('detectionChart').getContext('2d');
+
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Violations',
+                    data: [],
+                    borderColor: 'red',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: { beginAtZero: true }
+                }
+            }
+        });
+
+        let lastDetectionCount = 0;
+
+        setInterval(async () => {
+            try {
+                let response = await fetch("{% url 'fetch_detections' %}");
+                let data = await response.json();
+
+                let currentTotal = data.total_detections;
+                let newViolations = currentTotal - lastDetectionCount;
+
+                // Prevent a massive spike on initial load
+                if (lastDetectionCount === 0 && currentTotal > 0) {
+                    newViolations = 0;
+                }
+                lastDetectionCount = currentTotal;
+
+                let timeLabel = new Date().toLocaleTimeString();
+
+                chart.data.labels.push(timeLabel);
+                chart.data.datasets[0].data.push(newViolations);
+
+                // Keep graph moving cleanly with latest 15 points
+                if (chart.data.labels.length > 15) {
+                    chart.data.labels.shift();
+                    chart.data.datasets[0].data.shift();
+                }
+
+                chart.update();
+
+            } catch (e) {
+                console.error("Error fetching live data: ", e);
+            }
+        }, 2000);
+
+    </script>
+
+</body>
+
+</html>
