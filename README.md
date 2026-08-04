@@ -5,7 +5,6 @@
 
 This project is a real-time PPE (Personal Protective Equipment) detection system using Django Channels, YOLO, WebSockets, and OpenCV. The system captures live video, detects PPE violations (e.g., missing helmets or vests), and alerts users via sound notifications. Additionally, it includes a **detection log dashboard** that provides insights into total detections, class distributions, and historical logs.
 
-![image](https://github.com/user-attachments/assets/40c94630-8880-4893-b2fb-83c10fe32759)
 
 ![2025-03-25-10-04-46](https://github.com/user-attachments/assets/1a5511d3-639a-47f4-9d41-79263a22c9da)
 
